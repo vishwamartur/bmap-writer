@@ -32,6 +32,7 @@
 #include <libxml/tree.h>
 #include <openssl/evp.h>
 #include <zlib.h>
+#include <lzma.h>
 
 #define CHECKSUM_LENGTH 64
 #define RANGE_LENGTH 19
@@ -109,19 +110,30 @@ void computeSHA256(const char *buffer, size_t size, char *output) {
     output[CHECKSUM_LENGTH] = 0;
 }
 
-bool isCompressed(const std::string &imageFile) {
+bool isCompressed(const std::string &imageFile, std::string &compressionType) {
     std::ifstream file(imageFile, std::ios::binary);
     if (!file) {
         std::cerr << "Failed to open image file" << std::endl;
         return false;
     }
 
-    unsigned char buffer[2];
-    file.read(reinterpret_cast<char*>(buffer), 2);
+    unsigned char buffer[6];
+    file.read(reinterpret_cast<char*>(buffer), 6);
     file.close();
 
     // Check for gzip magic number
-    return buffer[0] == 0x1f && buffer[1] == 0x8b;
+    if (buffer[0] == 0x1f && buffer[1] == 0x8b) {
+        compressionType = "gzip";
+        return true;
+    }
+
+    // Check for xz magic number
+    if (buffer[0] == 0xfd && buffer[1] == '7' && buffer[2] == 'z' && buffer[3] == 'X' && buffer[4] == 'Z' && buffer[5] == 0x00) {
+        compressionType = "xz";
+        return true;
+    }
+
+    return false;
 }
 
 bool isDeviceMounted(const std::string &device) {
@@ -147,16 +159,39 @@ void printBufferHex(const char *buffer, size_t size) {
     printf("\n");
 }
 
-void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::string &device) {
+void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::string &device, const std::string &compressionType) {
     int dev_fd = open(device.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
     if (dev_fd < 0) {
         perror("Unable to open or create target device");
         return;
     }
 
-    gzFile img = gzopen(imageFile.c_str(), "rb");
-    if (!img) {
-        perror("Unable to open image file");
+    gzFile gzImg = nullptr;
+    lzma_stream lzmaStream = LZMA_STREAM_INIT;
+    std::ifstream imgFile;
+
+    if (compressionType == "gzip") {
+        gzImg = gzopen(imageFile.c_str(), "rb");
+        if (!gzImg) {
+            perror("Unable to open gzip image file");
+            close(dev_fd);
+            return;
+        }
+    } else if (compressionType == "xz") {
+        imgFile.open(imageFile, std::ios::binary);
+        if (!imgFile) {
+            perror("Unable to open xz image file");
+            close(dev_fd);
+            return;
+        }
+        lzma_ret ret = lzma_stream_decoder(&lzmaStream, UINT64_MAX, LZMA_CONCATENATED);
+        if (ret != LZMA_OK) {
+            std::cerr << "Failed to initialize lzma decoder" << std::endl;
+            close(dev_fd);
+            return;
+        }
+    } else {
+        std::cerr << "Unsupported compression type" << std::endl;
         close(dev_fd);
         return;
     }
@@ -171,33 +206,65 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
         size_t bufferSize = (endBlock - startBlock + 1) * bmap.blockSize;
         std::vector<char> buffer(bufferSize);
 
-        gzseek(img, startBlock * bmap.blockSize, SEEK_SET);
-        int bytesRead = gzread(img, buffer.data(), bufferSize);
-        if (bytesRead <= 0) {
-            perror("Failed to read from image file");
-            close(dev_fd);
-            gzclose(img);
-            return;
+        if (compressionType == "gzip") {
+            gzseek(gzImg, startBlock * bmap.blockSize, SEEK_SET);
+            int bytesRead = gzread(gzImg, buffer.data(), bufferSize);
+            if (bytesRead <= 0) {
+                perror("Failed to read from gzip image file");
+                close(dev_fd);
+                gzclose(gzImg);
+                return;
+            }
+        } else if (compressionType == "xz") {
+            imgFile.seekg(startBlock * bmap.blockSize, std::ios::beg);
+            imgFile.read(buffer.data(), bufferSize);
+            size_t bytesRead = imgFile.gcount();
+            if (bytesRead == 0 && imgFile.fail()) {
+                perror("Failed to read from xz image file");
+                close(dev_fd);
+                imgFile.close();
+                return;
+            }
+            lzmaStream.next_in = reinterpret_cast<const uint8_t*>(buffer.data());
+            lzmaStream.avail_in = bytesRead;
+            lzmaStream.next_out = reinterpret_cast<uint8_t*>(buffer.data());
+            lzmaStream.avail_out = bufferSize;
+
+            lzma_ret ret = lzma_code(&lzmaStream, LZMA_RUN);
+            if (ret != LZMA_OK && ret != LZMA_STREAM_END) {
+                std::cerr << "Failed to decompress xz image file" << std::endl;
+                close(dev_fd);
+                imgFile.close();
+                return;
+            }
         }
 
         // Compute and verify the checksum
         char computedChecksum[CHECKSUM_LENGTH + 1];
-        computeSHA256(buffer.data(), bytesRead, computedChecksum);
+        computeSHA256(buffer.data(), bufferSize, computedChecksum);
         std::cout << "Computed Checksum: " << computedChecksum << std::endl;
         std::cout << "Expected Checksum: " << range.checksum << std::endl;
         if (strcmp(computedChecksum, range.checksum.c_str()) != 0) {
             std::cerr << "Checksum verification failed for range: " << range.range << std::endl;
             std::cout << "Buffer content (hex):" << std::endl;
-            printBufferHex(buffer.data(), bytesRead);
+            printBufferHex(buffer.data(), bufferSize);
             close(dev_fd);
-            gzclose(img);
+            if (compressionType == "gzip") {
+                gzclose(gzImg);
+            } else if (compressionType == "xz") {
+                imgFile.close();
+            }
             exit(EXIT_FAILURE);
         }
 
-        if (pwrite(dev_fd, buffer.data(), bytesRead, startBlock * bmap.blockSize) < 0) {
+        if (pwrite(dev_fd, buffer.data(), bufferSize, startBlock * bmap.blockSize) < 0) {
             perror("Write to device failed");
             close(dev_fd);
-            gzclose(img);
+            if (compressionType == "gzip") {
+                gzclose(gzImg);
+            } else if (compressionType == "xz") {
+                imgFile.close();
+            }
             return;
         }
     }
@@ -207,7 +274,11 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
     }
 
     close(dev_fd);
-    gzclose(img);
+    if (compressionType == "gzip") {
+        gzclose(gzImg);
+    } else if (compressionType == "xz") {
+        imgFile.close();
+    }
     std::cout << "Finished writing image to device." << std::endl;
 }
 
@@ -217,9 +288,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    std::string imageFile    = argv[1];
-    std::string bmapFile     = argv[2];
-    std::string device       = argv[3];
+    std::string imageFile = argv[1];
+    std::string bmapFile = argv[2];
+    std::string device = argv[3];
 
     std::cout << "Starting BMap writer..." << std::endl;
     if (isDeviceMounted(device)) {
@@ -231,7 +302,14 @@ int main(int argc, char *argv[]) {
         std::cerr << "BlockSize not found in BMAP file" << std::endl;
         return 1;
     }
-    BmapWriteImage(imageFile, bmap, device);
+
+    std::string compressionType;
+    if (isCompressed(imageFile, compressionType)) {
+        BmapWriteImage(imageFile, bmap, device, compressionType);
+    } else {
+        BmapWriteImage(imageFile, bmap, device, "none");
+    }
+
     std::cout << "Process completed." << std::endl;
 
     return 0;

@@ -31,8 +31,16 @@ else()
     message(FATAL_ERROR "zlib not found")
 endif()
 
+# Find liblzma
+find_package(LibLZMA REQUIRED)
+if (LIBLZMA_FOUND)
+    include_directories(${LIBLZMA_INCLUDE_DIRS})
+else()
+    message(FATAL_ERROR "liblzma not found")
+endif()
+
 # Add the executable
 add_executable(bmap-writer bmap-writer.cpp)
 
 # Link the libraries
-target_link_libraries(bmap-writer ${LIBXML2_LIBRARIES} ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES})
+target_link_libraries(bmap-writer ${LIBXML2_LIBRARIES} ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBLZMA_LIBRARIES})
