@@ -260,10 +260,10 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
         // Compute and verify the checksum
         char computedChecksum[CHECKSUM_LENGTH + 1];
         computeSHA256(buffer.data(), bytesRead, computedChecksum);
-        std::cout << "Computed Checksum: " << computedChecksum << std::endl;
-        std::cout << "Expected Checksum: " << range.checksum << std::endl;
         if (strcmp(computedChecksum, range.checksum.c_str()) != 0) {
             std::cerr << "Checksum verification failed for range: " << range.range << std::endl;
+            std::cout << "Computed Checksum: " << computedChecksum << std::endl;
+            std::cout << "Expected Checksum: " << range.checksum << std::endl;
             //std::cout << "Buffer content (hex):" << std::endl;
             //printBufferHex(buffer.data(), bytesRead);
             close(dev_fd);
