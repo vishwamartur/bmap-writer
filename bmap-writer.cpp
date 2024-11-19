@@ -37,13 +37,13 @@
 #define CHECKSUM_LENGTH 64
 #define RANGE_LENGTH 19
 
-struct Range {
+struct range_t {
     std::string checksum;
     std::string range;
 };
 
 struct bmap_t {
-    std::vector<Range> ranges;
+    std::vector<range_t> ranges;
     int blockSize;
 };
 
@@ -71,7 +71,7 @@ bmap_t parseBMap(const std::string &filename) {
                         xmlChar *checksum = xmlGetProp(rangeNode, (const xmlChar *)"chksum");
                         xmlChar *range = xmlNodeGetContent(rangeNode);
 
-                        Range r;
+                        range_t r;
                         r.checksum = (const char *)checksum;
                         r.range = (const char *)range;
 
