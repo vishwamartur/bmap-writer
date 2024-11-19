@@ -31,6 +31,7 @@
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <openssl/evp.h>
+#include <zlib.h>
 
 #define CHECKSUM_LENGTH 64
 #define RANGE_LENGTH 19
@@ -153,7 +154,7 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
         return;
     }
 
-    std::ifstream img(imageFile, std::ios::binary);
+    gzFile img = gzopen(imageFile.c_str(), "rb");
     if (!img) {
         perror("Unable to open image file");
         close(dev_fd);
@@ -167,14 +168,15 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
         }
         std::cout << "Processing Range: startBlock=" << startBlock << ", endBlock=" << endBlock << std::endl;
 
-        img.seekg(startBlock * bmap.blockSize, std::ios::beg);
         size_t bufferSize = (endBlock - startBlock + 1) * bmap.blockSize;
         std::vector<char> buffer(bufferSize);
-        img.read(buffer.data(), bufferSize);
-        size_t bytesRead = img.gcount();
-        if (bytesRead == 0 && img.fail()) {
+
+        gzseek(img, startBlock * bmap.blockSize, SEEK_SET);
+        int bytesRead = gzread(img, buffer.data(), bufferSize);
+        if (bytesRead <= 0) {
             perror("Failed to read from image file");
             close(dev_fd);
+            gzclose(img);
             return;
         }
 
@@ -188,12 +190,14 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
             std::cout << "Buffer content (hex):" << std::endl;
             printBufferHex(buffer.data(), bytesRead);
             close(dev_fd);
+            gzclose(img);
             exit(EXIT_FAILURE);
         }
 
         if (pwrite(dev_fd, buffer.data(), bytesRead, startBlock * bmap.blockSize) < 0) {
             perror("Write to device failed");
             close(dev_fd);
+            gzclose(img);
             return;
         }
     }
@@ -203,6 +207,7 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
     }
 
     close(dev_fd);
+    gzclose(img);
     std::cout << "Finished writing image to device." << std::endl;
 }
 
