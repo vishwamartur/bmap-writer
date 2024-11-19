@@ -190,6 +190,13 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
             close(dev_fd);
             return;
         }
+    } else if (compressionType == "none") {
+        imgFile.open(imageFile, std::ios::binary);
+        if (!imgFile) {
+            perror("Unable to open image file");
+            close(dev_fd);
+            return;
+        }
     } else {
         std::cerr << "Unsupported compression type" << std::endl;
         close(dev_fd);
@@ -205,10 +212,11 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
 
         size_t bufferSize = (endBlock - startBlock + 1) * bmap.blockSize;
         std::vector<char> buffer(bufferSize);
+        size_t bytesRead = 0;
 
         if (compressionType == "gzip") {
             gzseek(gzImg, startBlock * bmap.blockSize, SEEK_SET);
-            int bytesRead = gzread(gzImg, buffer.data(), bufferSize);
+            bytesRead = gzread(gzImg, buffer.data(), bufferSize);
             if (bytesRead <= 0) {
                 perror("Failed to read from gzip image file");
                 close(dev_fd);
@@ -218,7 +226,7 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
         } else if (compressionType == "xz") {
             imgFile.seekg(startBlock * bmap.blockSize, std::ios::beg);
             imgFile.read(buffer.data(), bufferSize);
-            size_t bytesRead = imgFile.gcount();
+            bytesRead = imgFile.gcount();
             if (bytesRead == 0 && imgFile.fail()) {
                 perror("Failed to read from xz image file");
                 close(dev_fd);
@@ -237,32 +245,42 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
                 imgFile.close();
                 return;
             }
+        } else if (compressionType == "none") {
+            imgFile.seekg(startBlock * bmap.blockSize, std::ios::beg);
+            imgFile.read(buffer.data(), bufferSize);
+            bytesRead = imgFile.gcount();
+            if (bytesRead == 0 && imgFile.fail()) {
+                perror("Failed to read from image file");
+                close(dev_fd);
+                imgFile.close();
+                return;
+            }
         }
 
         // Compute and verify the checksum
         char computedChecksum[CHECKSUM_LENGTH + 1];
-        computeSHA256(buffer.data(), bufferSize, computedChecksum);
+        computeSHA256(buffer.data(), bytesRead, computedChecksum);
         std::cout << "Computed Checksum: " << computedChecksum << std::endl;
         std::cout << "Expected Checksum: " << range.checksum << std::endl;
         if (strcmp(computedChecksum, range.checksum.c_str()) != 0) {
             std::cerr << "Checksum verification failed for range: " << range.range << std::endl;
             std::cout << "Buffer content (hex):" << std::endl;
-            printBufferHex(buffer.data(), bufferSize);
+            printBufferHex(buffer.data(), bytesRead);
             close(dev_fd);
             if (compressionType == "gzip") {
                 gzclose(gzImg);
-            } else if (compressionType == "xz") {
+            } else if (compressionType == "xz" || compressionType == "none") {
                 imgFile.close();
             }
             exit(EXIT_FAILURE);
         }
 
-        if (pwrite(dev_fd, buffer.data(), bufferSize, startBlock * bmap.blockSize) < 0) {
+        if (pwrite(dev_fd, buffer.data(), bytesRead, startBlock * bmap.blockSize) < 0) {
             perror("Write to device failed");
             close(dev_fd);
             if (compressionType == "gzip") {
                 gzclose(gzImg);
-            } else if (compressionType == "xz") {
+            } else if (compressionType == "xz" || compressionType == "none") {
                 imgFile.close();
             }
             return;
@@ -276,7 +294,7 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
     close(dev_fd);
     if (compressionType == "gzip") {
         gzclose(gzImg);
-    } else if (compressionType == "xz") {
+    } else if (compressionType == "xz" || compressionType == "none") {
         imgFile.close();
     }
     std::cout << "Finished writing image to device." << std::endl;
