@@ -53,7 +53,7 @@ struct range_t {
 
 struct bmap_t {
     std::vector<range_t> ranges;
-    int blockSize;
+    size_t blockSize;
 };
 
 bmap_t parseBMap(const std::string &filename) {
@@ -71,7 +71,7 @@ bmap_t parseBMap(const std::string &filename) {
         if (node->type == XML_ELEMENT_NODE) {
             if (strcmp((const char *)node->name, "BlockSize") == 0) {
                 xmlChar *blockSizeStr = xmlNodeGetContent(node);
-                bmapData.blockSize = std::stoi((const char *)blockSizeStr);
+                bmapData.blockSize = static_cast<size_t>(std::stoul((const char *)blockSizeStr));
                 xmlFree(blockSizeStr);
                 std::cout << "Parsed BlockSize: " << bmapData.blockSize << std::endl;
             } else if (strcmp((const char *)node->name, "BlockMap") == 0) {
@@ -214,8 +214,8 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
     }
 
     for (const auto &range : bmap.ranges) {
-        int startBlock, endBlock;
-        if (sscanf(range.range.c_str(), "%d-%d", &startBlock, &endBlock) == 1) {
+        size_t startBlock, endBlock;
+        if (sscanf(range.range.c_str(), "%zu-%zu", &startBlock, &endBlock) == 1) {
             endBlock = startBlock;  // Handle single block range
         }
         std::cout << "Processing Range: startBlock=" << startBlock << ", endBlock=" << endBlock << std::endl;
@@ -225,18 +225,19 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
         size_t bytesRead = 0;
 
         if (compressionType == "gzip") {
-            gzseek(gzImg, startBlock * bmap.blockSize, SEEK_SET);
-            bytesRead = gzread(gzImg, buffer.data(), bufferSize);
-            if (bytesRead <= 0) {
+            gzseek(gzImg, static_cast<off_t>(startBlock * bmap.blockSize), SEEK_SET);
+            int readBytes = gzread(gzImg, buffer.data(), static_cast<unsigned int>(bufferSize));
+            if (readBytes < 0) {
                 perror("Failed to read from gzip image file");
                 close(dev_fd);
                 gzclose(gzImg);
                 return;
             }
+            bytesRead = static_cast<size_t>(readBytes);
         } else if (compressionType == "xz") {
-            imgFile.seekg(startBlock * bmap.blockSize, std::ios::beg);
-            imgFile.read(buffer.data(), bufferSize);
-            bytesRead = imgFile.gcount();
+            imgFile.seekg(static_cast<std::streamoff>(startBlock * bmap.blockSize), std::ios::beg);
+            imgFile.read(buffer.data(), static_cast<std::streamsize>(bufferSize));
+            bytesRead = static_cast<size_t>(imgFile.gcount());
             if (bytesRead == 0 && imgFile.fail()) {
                 perror("Failed to read from xz image file");
                 close(dev_fd);
@@ -256,9 +257,9 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
                 return;
             }
         } else if (compressionType == "none") {
-            imgFile.seekg(startBlock * bmap.blockSize, std::ios::beg);
-            imgFile.read(buffer.data(), bufferSize);
-            bytesRead = imgFile.gcount();
+            imgFile.seekg(static_cast<std::streamoff>(startBlock * bmap.blockSize), std::ios::beg);
+            imgFile.read(buffer.data(), static_cast<std::streamsize>(bufferSize));
+            bytesRead = static_cast<size_t>(imgFile.gcount());
             if (bytesRead == 0 && imgFile.fail()) {
                 perror("Failed to read from image file");
                 close(dev_fd);
@@ -285,7 +286,7 @@ void BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std:
             exit(EXIT_FAILURE);
         }
 
-        if (pwrite(dev_fd, buffer.data(), bytesRead, startBlock * bmap.blockSize) < 0) {
+        if (pwrite(dev_fd, buffer.data(), bytesRead, static_cast<off_t>(startBlock * bmap.blockSize)) < 0) {
             perror("Write to device failed");
             close(dev_fd);
             if (compressionType == "gzip") {
