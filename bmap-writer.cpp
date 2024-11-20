@@ -35,7 +35,16 @@
 #include <lzma.h>
 
 #define CHECKSUM_LENGTH 64
-#define RANGE_LENGTH 19
+#define RANGE_LENGTH    19
+
+#define GZIP_MAGIC_0 0x1f
+#define GZIP_MAGIC_1 0x8b
+#define XZ_MAGIC_0   0xfd
+#define XZ_MAGIC_1   '7'
+#define XZ_MAGIC_2   'z'
+#define XZ_MAGIC_3   'X'
+#define XZ_MAGIC_4   'Z'
+#define XZ_MAGIC_5  0x00
 
 struct range_t {
     std::string checksum;
@@ -121,14 +130,15 @@ bool isCompressed(const std::string &imageFile, std::string &compressionType) {
     file.read(reinterpret_cast<char*>(buffer), 6);
     file.close();
 
-    // Check for gzip magic number
-    if (buffer[0] == 0x1f && buffer[1] == 0x8b) {
+    // Check for gzip magic numbers
+    if (buffer[0] == GZIP_MAGIC_0 && buffer[1] == GZIP_MAGIC_1) {
         compressionType = "gzip";
         return true;
     }
 
-    // Check for xz magic number
-    if (buffer[0] == 0xfd && buffer[1] == '7' && buffer[2] == 'z' && buffer[3] == 'X' && buffer[4] == 'Z' && buffer[5] == 0x00) {
+    // Check for xz magic numbers
+    if (buffer[0] == XZ_MAGIC_0 && buffer[1] == XZ_MAGIC_1 && buffer[2] == XZ_MAGIC_2 &&
+        buffer[3] == XZ_MAGIC_3 && buffer[4] == XZ_MAGIC_4 && buffer[5] == XZ_MAGIC_5) {
         compressionType = "xz";
         return true;
     }
