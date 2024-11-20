@@ -45,6 +45,9 @@ add_executable(bmap-writer bmap-writer.cpp)
 # Link the libraries
 target_link_libraries(bmap-writer ${LIBXML2_LIBRARIES} ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${LIBLZMA_LIBRARIES})
 
+# Specify the install rules
+install(TARGETS bmap-writer DESTINATION bin)
+
 # Enable testing
 enable_testing()
 add_test(NAME bmap-writer-test COMMAND ./bmap-writer-test.sh)
