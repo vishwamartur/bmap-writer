@@ -73,7 +73,7 @@ bmap_t parseBMap(const std::string &filename) {
                 xmlChar *blockSizeStr = xmlNodeGetContent(node);
                 bmapData.blockSize = static_cast<size_t>(std::stoul((const char *)blockSizeStr));
                 xmlFree(blockSizeStr);
-                std::cout << "Parsed BlockSize: " << bmapData.blockSize << std::endl;
+                std::cout << "BlockSize: " << bmapData.blockSize << std::endl;
             } else if (strcmp((const char *)node->name, "BlockMap") == 0) {
                 for (xmlNodePtr rangeNode = node->children; rangeNode; rangeNode = rangeNode->next) {
                     if (rangeNode->type == XML_ELEMENT_NODE && strcmp((const char *)rangeNode->name, "Range") == 0) {
@@ -85,9 +85,7 @@ bmap_t parseBMap(const std::string &filename) {
                         r.range = (const char *)range;
 
                         bmapData.ranges.push_back(r);
-
-                        std::cout << "Parsed Range: checksum=" << r.checksum << ", range=" << r.range << std::endl;
-
+                        //std::cout << "Parsed Range: checksum=" << r.checksum << ", range=" << r.range << std::endl;
                         xmlFree(checksum);
                         xmlFree(range);
                     }
@@ -196,7 +194,7 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
         }
         lzma_ret ret = lzma_stream_decoder(&lzmaStream, UINT64_MAX, LZMA_CONCATENATED);
         if (ret != LZMA_OK) {
-            std::cerr << "Failed to initialize lzma decoder" << std::endl;
+            std::cerr << "Failed to initialize lzma decoder: " << ret << std::endl;
             close(dev_fd);
             return 1;
         }
@@ -252,7 +250,7 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
 
             lzma_ret ret = lzma_code(&lzmaStream, LZMA_RUN);
             if (ret != LZMA_OK && ret != LZMA_STREAM_END) {
-                std::cerr << "Failed to decompress xz image file" << std::endl;
+                std::cerr << "Failed to decompress xz image file: " << ret << std::endl;
                 close(dev_fd);
                 imgFile.close();
                 return 1;
@@ -324,7 +322,7 @@ int main(int argc, char *argv[]) {
     std::string bmapFile = argv[2];
     std::string device = argv[3];
 
-    std::cout << "Starting BMap writer..." << std::endl;
+    std::cout << "Starting bmap writer..." << std::endl;
     if (isDeviceMounted(device)) {
         std::cerr << "Error: Device " << device << " is mounted. Please unmount it before proceeding." << std::endl;
         return 1;
