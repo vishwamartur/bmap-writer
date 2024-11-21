@@ -172,7 +172,7 @@ void printBufferHex(const char *buffer, size_t size) {
 int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::string &device, const std::string &compressionType) {
     int dev_fd = open(device.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
     if (dev_fd < 0) {
-        perror("Unable to open or create target device");
+        std::cerr << "Unable to open or create target device" << std::endl;
         return 1;
     }
 
@@ -183,14 +183,14 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
     if (compressionType == "gzip") {
         gzImg = gzopen(imageFile.c_str(), "rb");
         if (!gzImg) {
-            perror("Unable to open gzip image file");
+            std::cerr << "Unable to open gzip image file" << std::endl;
             close(dev_fd);
             return 1;
         }
     } else if (compressionType == "xz") {
         imgFile.open(imageFile, std::ios::binary);
         if (!imgFile) {
-            perror("Unable to open xz image file");
+            std::cerr << "Unable to open xz image file" << std::endl;
             close(dev_fd);
             return 1;
         }
@@ -203,7 +203,7 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
     } else if (compressionType == "none") {
         imgFile.open(imageFile, std::ios::binary);
         if (!imgFile) {
-            perror("Unable to open image file");
+            std::cerr << "Unable to open image file" << std::endl;
             close(dev_fd);
             return 1;
         }
@@ -228,7 +228,7 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
             gzseek(gzImg, static_cast<off_t>(startBlock * bmap.blockSize), SEEK_SET);
             int readBytes = gzread(gzImg, buffer.data(), static_cast<unsigned int>(bufferSize));
             if (readBytes < 0) {
-                perror("Failed to read from gzip image file");
+                std::cerr << "Failed to read from gzip image file" << std::endl;
                 close(dev_fd);
                 gzclose(gzImg);
                 return 1;
@@ -240,7 +240,7 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
             imgFile.read(buffer.data(), static_cast<std::streamsize>(bufferSize));
             bytesRead = static_cast<size_t>(imgFile.gcount());
             if (bytesRead == 0 && imgFile.fail()) {
-                perror("Failed to read from xz image file");
+                std::cerr << "Failed to read from xz image file" << std::endl;
                 close(dev_fd);
                 imgFile.close();
                 return 1;
@@ -262,7 +262,7 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
             imgFile.read(buffer.data(), static_cast<std::streamsize>(bufferSize));
             bytesRead = static_cast<size_t>(imgFile.gcount());
             if (bytesRead == 0 && imgFile.fail()) {
-                perror("Failed to read from image file");
+                std::cerr << "Failed to read from image file" << std::endl;
                 close(dev_fd);
                 imgFile.close();
                 return 1;
@@ -274,9 +274,9 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
         computeSHA256(buffer.data(), bytesRead, computedChecksum);
         if (strcmp(computedChecksum, range.checksum.c_str()) != 0) {
             std::cerr << "Checksum verification failed for range: " << range.range << std::endl;
-            std::cout << "Computed Checksum: " << computedChecksum << std::endl;
-            std::cout << "Expected Checksum: " << range.checksum << std::endl;
-            //std::cout << "Buffer content (hex):" << std::endl;
+            std::cerr << "Computed Checksum: " << computedChecksum << std::endl;
+            std::cerr << "Expected Checksum: " << range.checksum << std::endl;
+            //std::cerr << "Buffer content (hex):" << std::endl;
             //printBufferHex(buffer.data(), bytesRead);
             close(dev_fd);
             if (compressionType == "gzip") {
@@ -288,7 +288,7 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
         }
 
         if (pwrite(dev_fd, buffer.data(), bytesRead, static_cast<off_t>(startBlock * bmap.blockSize)) < 0) {
-            perror("Write to device failed");
+            std::cerr << "Write to device failed"<< std::endl;
             close(dev_fd);
             if (compressionType == "gzip") {
                 gzclose(gzImg);
@@ -300,7 +300,8 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
     }
 
     if (fsync(dev_fd) != 0) {
-        perror("fsync failed after all writes");
+        std::cerr << "fsync failed after all writes"<< std::endl;
+
     }
 
     close(dev_fd);
