@@ -21,6 +21,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <iomanip>
 #include <string>
 #include <cstring>
 #include <fcntl.h>
@@ -157,14 +158,14 @@ bool isDeviceMounted(const std::string &device) {
 
 void printBufferHex(const char *buffer, size_t size) {
     for (size_t i = 0; i < size; ++i) {
-        printf("%02x", (unsigned char)buffer[i]);
+        std::cout << std::hex << std::setw(2) << std::setfill('0') << (unsigned int)(unsigned char)buffer[i];
         if ((i + 1) % 16 == 0) {
-            printf("\n");
+            std::cout << std::endl;
         } else {
-            printf(" ");
+            std::cout << " ";
         }
     }
-    printf("\n");
+    std::cout << std::endl;
 }
 
 int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::string &device, const std::string &compressionType) {
