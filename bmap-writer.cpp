@@ -233,7 +233,6 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
                 return 1;
             }
             bytesRead = static_cast<size_t>(readBytes);
-        // ToDO: Fix support for xz decompression
         } else if (compressionType == "xz") {
             imgFile.seekg(static_cast<std::streamoff>(startBlock * bmap.blockSize), std::ios::beg);
             imgFile.read(buffer.data(), static_cast<std::streamsize>(bufferSize));
@@ -256,6 +255,7 @@ int BmapWriteImage(const std::string &imageFile, const bmap_t &bmap, const std::
                 imgFile.close();
                 return 1;
             }
+            bytesRead = bufferSize - lzmaStream.avail_out;
         } else if (compressionType == "none") {
             imgFile.seekg(static_cast<std::streamoff>(startBlock * bmap.blockSize), std::ios::beg);
             imgFile.read(buffer.data(), static_cast<std::streamsize>(bufferSize));
