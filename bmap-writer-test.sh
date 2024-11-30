@@ -34,3 +34,11 @@ cmp test.img.out test.gz.img.out
 echo "## Write the file with bmap-writer and xz"
 ./bmap-writer test.img.xz test.img.bmap test.xz.img.out
 cmp test.img.out test.xz.img.out
+
+echo "## Verify the xz decompression test passes"
+if cmp -s test.img.out test.xz.img.out; then
+    echo "xz decompression test passed"
+else
+    echo "xz decompression test failed"
+    exit 1
+fi
